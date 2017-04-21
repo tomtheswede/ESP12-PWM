@@ -1,7 +1,7 @@
 /*  
- *   For a LED lamp with an ESP-12 chip. - REQUIRES PRACTICAL HARDWARE DEBUGGING
+ *   For a LED lamp with an ESP-12 chip.
  *   Most code by Thomas Friberg
- *   Updated 20/04/2017
+ *   Updated 21/04/2017
  */
 
 // Import ESP8266 libraries
@@ -10,7 +10,7 @@
 
 //Sensor details
 const int devices=2; //Number of LED devices
-const unsigned long devID[devices+1] = {12367777,34632767,72314555}; //Name of sensor - last one is button
+const unsigned long devID[devices+1] = {323267777,246332767,623414555}; //Name of sensor - last one is button
 const unsigned long devType[devices+1] = {5,5,1};
 const int defaultFade = 15; //Miliseconds between fade intervals - Think about putting this in EEPROM
 const int devPin[devices+1] = {12,13,14}; //LED pin number 12 for LED2, 13 for LED1. 2 for ESP-01
@@ -38,6 +38,8 @@ int timerSetpoint[devices] = {0,0};
 bool lastButtonState=0;
 bool buttonState=0;
 long buttonTriggerTime=millis();
+long currentTime=millis();
+bool primer[4]={0,0,0,0};
 
 
 WiFiUDP Udp; //Instance to send packets
@@ -73,9 +75,6 @@ void loop()
 }
 
 //--------------------------------------------------------------
-
-
-
 
 
 void SetupLines() {
@@ -296,16 +295,40 @@ void CheckTimer() {
 
 void CheckButton() {
   buttonState=(!digitalRead(devPin[devices]));
+  currentTime=millis();
   if (buttonState!=lastButtonState) {
-    if (buttonState && millis()-buttonTriggerTime>300) {
+    if (buttonState && currentTime-buttonTriggerTime>300) {
       SendUdpValue(1,devID[devices],1);
-      buttonTriggerTime=millis();
+      buttonTriggerTime=currentTime;
+      primer[0]=1;
+      primer[1]=1;
+      primer[2]=1;
+      primer[3]=1;
     }
-    else if (!buttonState && (millis()-buttonTriggerTime>4000)) {
-      SendUdpValue(0,devID[devices],devType[devices]);
+    else if (!buttonState) {
+      primer[0]=0;
+      primer[1]=0;
+      primer[2]=0;
+      primer[3]=0;
     }
   }
   lastButtonState=buttonState;
+  if (primer[0] && (currentTime-buttonTriggerTime>600)) {
+    SendUdpValue(1,devID[devices],2);
+    primer[0]=0;
+  }
+  else if (primer[1] && (currentTime-buttonTriggerTime>1500)) {
+    SendUdpValue(1,devID[devices],3);
+    primer[1]=0;
+  }
+  else if (primer[2] && (currentTime-buttonTriggerTime>4000)) {
+    SendUdpValue(1,devID[devices],4);
+    primer[2]=0;
+  }
+  else if (primer[3] && (currentTime-buttonTriggerTime>8000)) {
+    SendUdpValue(0,devID[devices],devType[devices]);  //Register
+    primer[3]=0;
+  }
 }
 
 void SendUdpValue(byte type, unsigned long devID, unsigned long value) {
