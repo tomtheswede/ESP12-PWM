@@ -9,11 +9,11 @@
 #include <WiFiUdp.h>
 
 //Sensor details
-const int devices=2;
-const unsigned long devID[devices] = {12367777,34632767}; //Name of sensor
-const unsigned long devType[devices] = {5,5};
+const int devices=2; //Number of LED devices
+const unsigned long devID[devices+1] = {12367777,34632767,72314555}; //Name of sensor - last one is button
+const unsigned long devType[devices+1] = {5,5,1};
 const int defaultFade = 15; //Miliseconds between fade intervals - Think about putting this in EEPROM
-const int devPin[devices] = {12,13}; //LED pin number 12 for LED2, 13 for LED1. 2 for ESP-01
+const int devPin[devices+1] = {12,13,14}; //LED pin number 12 for LED2, 13 for LED1. 2 for ESP-01
 
 // WiFi parameters
 const char* ssid = "ThomasWifi"; //Enter your WiFi network name here in the quotation marks - Will need to be in EEPROM
@@ -24,15 +24,21 @@ unsigned int localPort = 5007;  //UDP send port
 const char* ipAdd = "192.168.0.100"; //Server address
 byte packetBuffer[256]; //buffer for incoming packets
 
-//Sensor variables
+//Sensor variables specific to LEDs
 int ledPinState[devices] = {0,0}; //Default boot state of LEDs and last setPoint of the pin between 0 and 100
 int ledSetPoint[devices] = {0,0}; //Target for dimming
 int brightness[devices] = {100,100}; //last 'on' setpoint for 0-100 scale brightness
 static const unsigned int PWMTable[101] = {0,1,2,3,5,6,7,8,9,10,12,13,14,16,18,20,21,24,26,28,31,33,36,39,42,45,49,52,56,60,64,68,72,77,82,87,92,98,103,109,115,121,128,135,142,149,156,164,172,180,188,197,206,215,225,235,245,255,266,276,288,299,311,323,336,348,361,375,388,402,417,432,447,462,478,494,510,527,544,562,580,598,617,636,655,675,696,716,737,759,781,803,826,849,872,896,921,946,971,997,1023}; //0 to 100 values for brightnes
-int fadeSpeed[] = {defaultFade,defaultFade}; //Time between fade intervals - 20ms between change in brightness
+int fadeSpeed[devices] = {defaultFade,defaultFade}; //Time between fade intervals - 20ms between change in brightness
 String data = "";
 int timerCount[devices] = {0,0};
 int timerSetpoint[devices] = {0,0};
+
+//Button related
+bool lastButtonState=0;
+bool buttonState=0;
+long buttonTriggerTime=millis();
+
 
 WiFiUDP Udp; //Instance to send packets
 
@@ -59,6 +65,8 @@ void loop()
   
   FadeLEDs(); //Fading script
 
+  CheckButton();
+
   if (WiFi.status() != WL_CONNECTED) {
     ConnectWifi();
   }
@@ -76,6 +84,8 @@ void SetupLines() {
     pinMode(devPin[i], OUTPUT); //Set as output
     digitalWrite(devPin[i], 0); //Turn off LED while connecting
   }
+  //button setup
+  pinMode(devPin[devices],INPUT_PULLUP);
   
   // Start //Serial port monitoring
   Serial.begin(115200);
@@ -108,7 +118,7 @@ void ConnectWifi() {
   //Register on the network with the server after verifying connect
   
   delay(2000); //Time clearance to ensure registration
-  for (int i=0;i<devices;i++){
+  for (int i=0;i<devices+1;i++){
     SendUdpValue(0,devID[i],devType[i]); //Register LED on server
   }
 }
@@ -146,13 +156,13 @@ void ProcessMessage(String dataIn) {
   byte numArgs;
 
   dID=atoi(dataIn.substring(0, comma).c_str()); //Break down the message in to it's parts  
-  Serial.println("DevID reads after processing: " + dID);
+  //Serial.println("DevID reads: " + String(dID));
   msg=atoi(dataIn.substring(comma+1).c_str());
-  Serial.println("Message reads after processing: " + msg);
+  //Serial.println("Message reads: " + String(msg));
 
   for(int i=0;i<devices;i++) {
     if (devID[i]==dID) { //Only do this set of commands if there is a message for an LED device
-      //Enables slow fading
+      //Code for splitting message in to arguments ---------------------------------
       if (msg>=65536) { //for 4 bit message
         numArgs=3;
         for (int j=0;j<8;j++){
@@ -184,7 +194,7 @@ void ProcessMessage(String dataIn) {
         arg1=(byte)msg;
         Serial.println("Arg1 = " + String(arg1));
       }
-      // Actual functions below here
+      // Actual functions below here -------------------------------------------
       if (numArgs==4 && arg1==240) { //Fade
         ledSetPoint[i]=arg2;
         fadeSpeed[i]=arg3/1000; //arg is in tenths of seconds for full fade. split this over 100 increments.
@@ -212,14 +222,34 @@ void ProcessMessage(String dataIn) {
       else if (numArgs==1 && arg1==203) {  //onToLast brightness
         ledSetPoint[i]=brightness[i];
       }
-      else if (numArgs==1 && arg1==209) {  //Default press
-        //TODO
+      else if (numArgs==1 && arg1==211) {  //Default press
+        Serial.println("Default press triggered");
+        if (ledSetPoint[i]>0 && ledPinState[i]==ledSetPoint[i]) {
+          ledSetPoint[i]=0;
+        }
+        else if (ledSetPoint[i]>0 && ledPinState[i]!=ledSetPoint[i]){
+          ledSetPoint[i]=ledPinState[i];
+          brightness[i]=ledPinState[i];
+        }
+        else {
+          ledSetPoint[i]=brightness[i];
+        }
       }
-      else if (numArgs==1 && arg1==206) {  //Toggle
-        //TODO
+      else if (numArgs==1 && arg1==206) {  //Toggle full on/off
+        Serial.println("Toggle full on/off triggered");
+        if (ledSetPoint[i]>0) {
+          ledSetPoint[i]=0;
+        }
+        else {
+          ledSetPoint[i]=100;
+        }
       }
-      else if (numArgs==1 && arg1==208) {  //Hold
-        //TODO
+      else if (numArgs==1 && arg1==210) {  //Hold
+        Serial.println("Hold triggered");
+        if (ledSetPoint[i]>0 && ledPinState[i]!=ledSetPoint[i]){
+          ledSetPoint[i]=ledPinState[i];
+          brightness[i]=ledPinState[i];
+        }
       }
     }
   }
@@ -262,6 +292,20 @@ void CheckTimer() {
       delay(1);
     }
   }
+}
+
+void CheckButton() {
+  buttonState=(!digitalRead(devPin[devices]));
+  if (buttonState!=lastButtonState) {
+    if (buttonState && millis()-buttonTriggerTime>300) {
+      SendUdpValue(1,devID[devices],1);
+      buttonTriggerTime=millis();
+    }
+    else if (!buttonState && (millis()-buttonTriggerTime>4000)) {
+      SendUdpValue(0,devID[devices],devType[devices]);
+    }
+  }
+  lastButtonState=buttonState;
 }
 
 void SendUdpValue(byte type, unsigned long devID, unsigned long value) {
