@@ -11,7 +11,7 @@
 //Sensor details
 const int devices=2; //Number of LED devices
 const unsigned long devID[devices+1] = {323267777,246332767,623414555}; //Name of sensor - last one is button
-const unsigned long devType[devices+1] = {5,5,1};
+const unsigned long devType[devices+1] = {37,37,31};
 const int defaultFade = 15; //Miliseconds between fade intervals - Think about putting this in EEPROM
 const int devPin[devices+1] = {12,13,14}; //LED pin number 12 for LED2, 13 for LED1. 2 for ESP-01
 
@@ -72,6 +72,7 @@ void loop()
   if (WiFi.status() != WL_CONNECTED) {
     ConnectWifi();
   }
+
 }
 
 //--------------------------------------------------------------
@@ -91,9 +92,9 @@ void SetupLines() {
   
   ConnectWifi();
   
-  digitalWrite(devPin[0], HIGH); //Turn off LED while connecting
-  delay(20); //A flash of light to confirm that the lamp is ready to take commands
-  digitalWrite(devPin[0], LOW); //Turn off LED while connecting
+  digitalWrite(devPin[1], HIGH); //Turn off LED while connecting
+  delay(10); //A flash of light to confirm that the lamp is ready to take commands
+  digitalWrite(devPin[1], LOW); //Turn off LED while connecting
   
 }
 
@@ -225,13 +226,16 @@ void ProcessMessage(String dataIn) {
         Serial.println("Default press triggered");
         if (ledSetPoint[i]>0 && ledPinState[i]==ledSetPoint[i]) {
           ledSetPoint[i]=0;
+          Serial.println("Turning off");
         }
-        else if (ledSetPoint[i]>0 && ledPinState[i]!=ledSetPoint[i]){
+        else if (ledPinState[i]>0 && ledPinState[i]!=ledSetPoint[i]){
           ledSetPoint[i]=ledPinState[i];
           brightness[i]=ledPinState[i];
+          Serial.println("Holding");
         }
         else {
           ledSetPoint[i]=brightness[i];
+          Serial.println("Turning on");
         }
       }
       else if (numArgs==1 && arg1==206) {  //Toggle full on/off
@@ -245,7 +249,7 @@ void ProcessMessage(String dataIn) {
       }
       else if (numArgs==1 && arg1==210) {  //Hold
         Serial.println("Hold triggered");
-        if (ledSetPoint[i]>0 && ledPinState[i]!=ledSetPoint[i]){
+        if (ledPinState[i]>0 && ledPinState[i]!=ledSetPoint[i]){
           ledSetPoint[i]=ledPinState[i];
           brightness[i]=ledPinState[i];
         }
@@ -256,17 +260,17 @@ void ProcessMessage(String dataIn) {
 
 
 void FadeLEDs() {
-  for(int i=0;i<devices;i++) {
+  for (int i=0;i<devices;i++) {
     if ((millis() % fadeSpeed[i] == 0) && (ledPinState[i] < ledSetPoint[i])) {
       ledPinState[i] = ledPinState[i] + 1;
       analogWrite(devPin[i], PWMTable[ledPinState[i]]);
-      //Serial.println("LED state is now set to " + String(ledPinState));
+      //Serial.println("LED state is now set to " + String(ledPinState[i]));
       delay(1);
     }
     else if ((millis() % fadeSpeed[i] == 0) && (ledPinState[i] > ledSetPoint[i])) {
       ledPinState[i] = ledPinState[i] - 1;
       analogWrite(devPin[i], PWMTable[ledPinState[i]]);
-      //Serial.println("LED state is now set to " + String(ledPinState));
+      //Serial.println("LED state is now set to " + String(ledPinState[i]));
       delay(1);
     }
   }
