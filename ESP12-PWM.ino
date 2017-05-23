@@ -1,5 +1,5 @@
 /*  
- *   For a LED lamp with an ESP-12 chip.
+ *   For a LED lamp with an ESP-01 chip.
  *   Most code by Thomas Friberg
  *   Updated 21/04/2017
  */
@@ -10,10 +10,10 @@
 
 //Sensor details
 const int devices=2; //Number of LED devices
-const unsigned long devID[devices+1] = {323267777,246332767,623414555}; //Name of sensor - last one is button
+const unsigned long devID[devices+1] = {98765522,253225777,12434355}; //Name of sensor - last one is button
 const unsigned long devType[devices+1] = {37,37,31};
 const int defaultFade = 15; //Miliseconds between fade intervals - Think about putting this in EEPROM
-const int devPin[devices+1] = {12,13,14}; //LED pin number 12 for LED2, 13 for LED1. 2 for ESP-01
+const int devPin[devices+1] = {13,12,14}; //LED pin number 12 for LED2, 13 for LED1. 2 for ESP-01
 
 // WiFi parameters
 const char* ssid = "ThomasWifi"; //Enter your WiFi network name here in the quotation marks - Will need to be in EEPROM
@@ -92,9 +92,9 @@ void SetupLines() {
   
   ConnectWifi();
   
-  digitalWrite(devPin[1], HIGH); //Turn off LED while connecting
+  digitalWrite(devPin[0], HIGH); //Turn off LED while connecting
   delay(10); //A flash of light to confirm that the lamp is ready to take commands
-  digitalWrite(devPin[1], LOW); //Turn off LED while connecting
+  digitalWrite(devPin[0], LOW); //Turn off LED while connecting
   
 }
 
@@ -213,14 +213,88 @@ void ProcessMessage(String dataIn) {
       if (numArgs==1 && arg1>=0 && arg1<=100) { //Instant level set
         ledPinState[i]=arg1;
         ledSetPoint[i]=arg1;
-        analogWrite(devPin[i], PWMTable[arg1]);
+        brightness[i]=arg1;
+        analogWrite(devPin[i], PWMTable[ledPinState[i]]);
         Serial.println("Instant set");
       }
       else if (numArgs==1 && arg1>=101 && arg1<=202) { //Regular dimming set
         ledSetPoint[i]=arg1-101;
       }
-      else if (numArgs==1 && arg1==203) {  //onToLast brightness
+      if (numArgs==1 && arg1==203) { //Instant level off
+        ledPinState[i]=0;
+        ledSetPoint[i]=0;
+        analogWrite(devPin[i], PWMTable[ledPinState[i]]);
+        Serial.println("Instant off set");
+      }
+      else if (numArgs==1 && arg1==204) { //Regular dimming on to last
         ledSetPoint[i]=brightness[i];
+      }
+      if (numArgs==1 && arg1==205) { //Instant level on
+        ledPinState[i]=brightness[i];
+        ledSetPoint[i]=brightness[i];
+        analogWrite(devPin[i], PWMTable[ledPinState[i]]);
+        Serial.println("Instant off set");
+      }
+      else if (numArgs==1 && arg1==206) {  //Default toggle
+        Serial.print("Toggle triggered: ");
+        if (ledSetPoint[i]>0) {
+          ledSetPoint[i]=0;
+          Serial.println("Turning off");
+        }
+        else {
+          brightness[i]=100;
+          ledSetPoint[i]=brightness[i];
+          Serial.println("Turning on");
+        }
+      }
+      else if (numArgs==1 && arg1==207) {  //Instant toggle
+        Serial.print("Toggle triggered: ");
+        if (ledSetPoint[i]>0) {
+          ledPinState[i]=0;
+          ledSetPoint[i]=0;
+          analogWrite(devPin[i], PWMTable[ledPinState[i]]);
+          Serial.println("Turning off");
+        }
+        else {
+          brightness[i]=100;
+          ledPinState[i]=brightness[i];
+          ledSetPoint[i]=brightness[i];
+          analogWrite(devPin[i], PWMTable[ledPinState[i]]);
+          Serial.println("Turning on");
+        }
+      }
+      else if (numArgs==1 && arg1==208) {  //Default toggle to last brightness
+        Serial.print("Toggle triggered: ");
+        if (ledSetPoint[i]>0) {
+          ledSetPoint[i]=0;
+          Serial.println("Turning off");
+        }
+        else {
+          ledSetPoint[i]=brightness[i];
+          Serial.println("Turning on");
+        }
+      }
+      else if (numArgs==1 && arg1==209) {  //Instant toggle to last brightness
+        Serial.print("Toggle triggered: ");
+        if (ledSetPoint[i]>0) {
+          ledPinState[i]=0;
+          ledSetPoint[i]=0;
+          analogWrite(devPin[i], PWMTable[ledPinState[i]]);
+          Serial.println("Turning off");
+        }
+        else {
+          ledPinState[i]=brightness[i];
+          ledSetPoint[i]=brightness[i];
+          analogWrite(devPin[i], PWMTable[ledPinState[i]]);
+          Serial.println("Turning on");
+        }
+      }
+      else if (numArgs==1 && arg1==210) {  //Hold
+        Serial.println("Hold triggered");
+        if (ledPinState[i]>0 && ledPinState[i]!=ledSetPoint[i]){
+          ledSetPoint[i]=ledPinState[i];
+          brightness[i]=ledPinState[i];
+        }
       }
       else if (numArgs==1 && arg1==211) {  //Default press
         Serial.println("Default press triggered");
@@ -238,22 +312,7 @@ void ProcessMessage(String dataIn) {
           Serial.println("Turning on");
         }
       }
-      else if (numArgs==1 && arg1==206) {  //Toggle full on/off
-        Serial.println("Toggle full on/off triggered");
-        if (ledSetPoint[i]>0) {
-          ledSetPoint[i]=0;
-        }
-        else {
-          ledSetPoint[i]=100;
-        }
-      }
-      else if (numArgs==1 && arg1==210) {  //Hold
-        Serial.println("Hold triggered");
-        if (ledPinState[i]>0 && ledPinState[i]!=ledSetPoint[i]){
-          ledSetPoint[i]=ledPinState[i];
-          brightness[i]=ledPinState[i];
-        }
-      }
+      //2 byte messages WIP
     }
   }
 }
